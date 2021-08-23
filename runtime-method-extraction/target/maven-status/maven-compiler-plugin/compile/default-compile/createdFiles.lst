@@ -1,4 +1,5 @@
-com\company\AllMethod.class
+com\company\Constructor.class
 com\company\Agent.class
 com\company\CallCollector.class
+com\company\Methods.class
 com\company\Signature.class
