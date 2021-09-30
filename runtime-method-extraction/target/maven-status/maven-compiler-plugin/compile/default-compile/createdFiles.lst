@@ -1,5 +1,7 @@
+com\company\data\ClassDTO.class
 com\company\Constructor.class
-com\company\Agent.class
-com\company\CallCollector.class
 com\company\Methods.class
 com\company\Signature.class
+com\company\data\MethodDTO.class
+com\company\Agent.class
+com\company\CallCollector.class

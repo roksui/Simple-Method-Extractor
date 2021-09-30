@@ -11,7 +11,6 @@ public class CallCollector {
     private List<Signature> calls = new ArrayList<>();
 
     private CallCollector() {
-
     }
 
     public static CallCollector instance() {

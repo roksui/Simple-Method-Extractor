@@ -19,7 +19,7 @@ public class Agent {
                 .with(new AgentBuilder.InitializationStrategy.SelfInjection.Eager())
                 .type((ElementMatchers.any()))
                 .transform((builder, typeDescription, classLoader, module) -> builder
-                        // constructor를 intercept하기 위해서는 Advice를 따로 만들어야 함
+                        // constructor를 intercept하기 위해서는 아래 줄과 같이 Advice를 따로 만들어야 함
                         .constructor(ElementMatchers.any())
                         .intercept(Advice.to(Constructor.class))
                         .method(ElementMatchers.any())
