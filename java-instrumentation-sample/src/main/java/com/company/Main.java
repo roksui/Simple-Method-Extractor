@@ -12,5 +12,15 @@ public class Main {
         task.method1();
         task.method2();
         task.add(1, 2);
+
+        Cart.printItem("apple");
+    }
+
+    public static class Cart {
+        String[] items = null;
+
+        public static void printItem(String item) {
+            System.out.println(item);
+        }
     }
 }

@@ -24,6 +24,10 @@ public class ClassDTO {
         this.classFQN = classFQN;
     }
 
+    public String getClassFQN() {
+        return classFQN;
+    }
+
     public void setMethods(List<MethodDTO> methods) {
         this.methods = methods;
     }
