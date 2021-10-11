@@ -19,7 +19,7 @@
               <transformers>
                 <transformer>
                   <manifestEntries>
-                    <Premain-Class>com.company.Agent</Premain-Class>
+                    <Premain-Class>com.sptracer.Agent</Premain-Class>
                   </manifestEntries>
                 </transformer>
               </transformers>
