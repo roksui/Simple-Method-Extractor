@@ -1,14 +1,12 @@
 package com.sptracer.configuration;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.sptracer.configuration.converter.*;
 import com.sptracer.configuration.source.ConfigurationSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.core.type.TypeReference;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URL;
@@ -21,7 +19,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Pattern;
@@ -88,6 +85,149 @@ public class ConfigurationOption<T> {
         return new ConfigurationOptionBuilder<T>(valueConverter, valueType);
     }
 
+    /**
+     * Constructs a {@link ConfigurationOptionBuilder} whose value is of type {@link String}
+     *
+     * @return a {@link ConfigurationOptionBuilder} whose value is of type {@link String}
+     */
+    public static ConfigurationOptionBuilder<String> stringOption() {
+        return new ConfigurationOptionBuilder<String>(StringValueConverter.INSTANCE, String.class);
+    }
+
+    public static <T> ConfigurationOptionBuilder<T> jsonOption(TypeReference<T> typeReference, Class<? super T> clazz) {
+        return new ConfigurationOptionBuilder<T>(new JsonValueConverter<T>(typeReference), clazz);
+    }
+
+    /**
+     * Constructs a {@link ConfigurationOptionBuilder} whose value is of type {@link Boolean}
+     *
+     * @return a {@link ConfigurationOptionBuilder} whose value is of type {@link Boolean}
+     */
+    public static ConfigurationOptionBuilder<Boolean> booleanOption() {
+        return new ConfigurationOptionBuilder<Boolean>(BooleanValueConverter.INSTANCE, Boolean.class);
+    }
+
+    /**
+     * Constructs a {@link ConfigurationOptionBuilder} whose value is of type {@link Integer}
+     *
+     * @return a {@link ConfigurationOptionBuilder} whose value is of type {@link Integer}
+     */
+    public static ConfigurationOptionBuilder<Integer> integerOption() {
+        return new ConfigurationOptionBuilder<Integer>(IntegerValueConverter.INSTANCE, Integer.class);
+    }
+
+    /**
+     * Constructs a {@link ConfigurationOptionBuilder} whose value is of type {@link Long}
+     *
+     * @return a {@link ConfigurationOptionBuilder} whose value is of type {@link Long}
+     */
+    public static ConfigurationOptionBuilder<Long> longOption() {
+        return new ConfigurationOptionBuilder<Long>(LongValueConverter.INSTANCE, Long.class);
+    }
+
+    /**
+     * Constructs a {@link ConfigurationOptionBuilder} whose value is of type {@link Double}
+     *
+     * @return a {@link ConfigurationOptionBuilder} whose value is of type {@link Double}
+     */
+    public static ConfigurationOptionBuilder<Double> doubleOption() {
+        return new ConfigurationOptionBuilder<Double>(DoubleValueConverter.INSTANCE, Double.class);
+    }
+
+    /**
+     * Constructs a {@link ConfigurationOptionBuilder} whose value is of type {@link List}&lt;{@link String}&gt;
+     *
+     * @return a {@link ConfigurationOptionBuilder} whose value is of type {@link List}&lt;{@link String}&gt;
+     */
+    public static ConfigurationOptionBuilder<Collection<String>> stringsOption() {
+        return new ConfigurationOptionBuilder<Collection<String>>(SetValueConverter.STRINGS_VALUE_CONVERTER, Collection.class)
+                .defaultValue(Collections.<String>emptySet());
+    }
+
+    /**
+     * Constructs a {@link ConfigurationOptionBuilder} whose value is of type {@link List}&lt;{@link String}&gt; and all
+     * Strings are converted to lower case.
+     *
+     * @return a {@link ConfigurationOptionBuilder} whose value is of type {@link List}&lt;{@link String}&gt;
+     */
+    public static ConfigurationOptionBuilder<Collection<String>> lowerStringsOption() {
+        return new ConfigurationOptionBuilder<Collection<String>>(SetValueConverter.LOWER_STRINGS_VALUE_CONVERTER, Collection.class)
+                .defaultValue(Collections.<String>emptySet());
+    }
+
+    /**
+     * Constructs a {@link ConfigurationOptionBuilder} whose value is of type {@link Set}&lt;{@link Integer}&gt;
+     *
+     * @return a {@link ConfigurationOptionBuilder} whose value is of type {@link Set}&lt;{@link Integer}&gt;
+     */
+    public static ConfigurationOption.ConfigurationOptionBuilder<Collection<Integer>> integersOption() {
+        return ConfigurationOption.builder(SetValueConverter.INTEGERS, Collection.class);
+    }
+
+    /**
+     * Constructs a {@link ConfigurationOptionBuilder} whose value is of type {@link List}&lt;{@link Pattern}&gt;
+     *
+     * @return a {@link ConfigurationOptionBuilder} whose value is of type {@link List}&lt;{@link Pattern}&gt;
+     */
+    public static ConfigurationOptionBuilder<Collection<Pattern>> regexListOption() {
+        return new ConfigurationOptionBuilder<Collection<Pattern>>(new SetValueConverter<Pattern>(RegexValueConverter.INSTANCE), Collection.class)
+                .defaultValue(Collections.<Pattern>emptySet());
+    }
+
+    /**
+     * Constructs a {@link ConfigurationOptionBuilder} whose value is of type {@link Map}&lt;{@link Pattern}, {@link
+     * String}&gt;
+     *
+     * @return a {@link ConfigurationOptionBuilder} whose value is of type {@link Map}&lt;{@link Pattern}, {@link
+     * String}&gt;
+     */
+    public static ConfigurationOptionBuilder<Map<Pattern, String>> regexMapOption() {
+        return new ConfigurationOptionBuilder<Map<Pattern, String>>(MapValueConverter.REGEX_MAP_VALUE_CONVERTER, Map.class)
+                .defaultValue(Collections.<Pattern, String>emptyMap());
+    }
+
+    /**
+     * Constructs a {@link ConfigurationOptionBuilder} whose value is of type {@link Map}
+     *
+     * @return a {@link ConfigurationOptionBuilder} whose value is of type {@link Map}
+     */
+    public static <K, V> ConfigurationOptionBuilder<Map<K, V>> mapOption(ValueConverter<K> keyConverter, ValueConverter<V> valueConverter) {
+        return new ConfigurationOptionBuilder<Map<K, V>>(new MapValueConverter<K, V>(keyConverter, valueConverter), Map.class)
+                .defaultValue(Collections.<K, V>emptyMap());
+    }
+
+    /**
+     * Constructs a {@link ConfigurationOptionBuilder} whose value is an {@link Enum}
+     *
+     * @return a {@link ConfigurationOptionBuilder} whose value is an {@link Enum}
+     */
+    public static <T extends Enum<T>> ConfigurationOptionBuilder<T> enumOption(Class<T> clazz) {
+        final ConfigurationOptionBuilder<T> optionBuilder = new ConfigurationOptionBuilder<T>(new EnumValueConverter<T>(clazz), clazz);
+        for (T enumConstant : clazz.getEnumConstants()) {
+            optionBuilder.addValidOption(enumConstant);
+        }
+        optionBuilder.sealValidOptions();
+        return optionBuilder;
+    }
+
+    /**
+     * Constructs a {@link ConfigurationOptionBuilder} whose value is of type {@link String}
+     *
+     * @return a {@link ConfigurationOptionBuilder} whose value is of type {@link String}
+     */
+    public static ConfigurationOptionBuilder<URL> urlOption() {
+        return new ConfigurationOptionBuilder<URL>(UrlValueConverter.INSTANCE, URL.class);
+    }
+
+    /**
+     * Constructs a {@link ConfigurationOptionBuilder} whose value is of type {@link String}
+     *
+     * @return a {@link ConfigurationOptionBuilder} whose value is of type {@link String}
+     */
+    public static ConfigurationOptionBuilder<List<URL>> urlsOption() {
+        return new ConfigurationOptionBuilder<List<URL>>(new ListValueConverter<URL>(UrlValueConverter.INSTANCE), List.class)
+                .defaultValue(Collections.<URL>emptyList());
+    }
 
     private ConfigurationOption(boolean dynamic, boolean sensitive, String key, String label, String description,
                                 T defaultValue, String configurationCategory, final ValueConverter<T> valueConverter,

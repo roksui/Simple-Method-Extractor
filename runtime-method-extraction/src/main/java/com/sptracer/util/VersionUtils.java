@@ -1,6 +1,9 @@
 package com.sptracer.util;
 
+import com.sptracer.SpTracerAgent;
+import com.sptracer.WeakMap;
 import com.sptracer.configuration.source.PropertyFileConfigurationSource;
+import com.sptracer.weakconcurrent.WeakConcurrent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -8,45 +11,96 @@ import java.util.NoSuchElementException;
 import java.util.Properties;
 import java.util.StringTokenizer;
 
+import javax.annotation.Nullable;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Properties;
+import java.util.jar.JarInputStream;
+
 public final class VersionUtils {
 
-    private static final Logger logger = LoggerFactory.getLogger(VersionUtils.class);
+    private static final WeakMap<Class<?>, String> versionsCache = WeakConcurrent.buildMap();
+    private static final String UNKNOWN_VERSION = "UNKNOWN_VERSION";
+    @Nullable
+    private static final String AGENT_VERSION;
+
+    static {
+        String version = getVersion(VersionUtils.class, "co.elastic.apm", "elastic-apm-agent");
+        if (version != null && version.endsWith("SNAPSHOT")) {
+            String gitRev = getManifestEntry(SpTracerAgent.getAgentJarFile(), "SCM-Revision");
+            if (gitRev != null) {
+                version = version + "." + gitRev;
+            }
+        }
+        AGENT_VERSION = version;
+    }
 
     private VersionUtils() {
     }
 
-    public static String getVersionFromPomProperties(Class clazz, String groupId, String artifactId) {
-        final String classpathLocation = "META-INF/maven/" + groupId + "/" + artifactId + "/pom.properties";
-        final Properties pomProperties = PropertyFileConfigurationSource.getFromClasspath(classpathLocation, clazz.getClassLoader());
+    @Nullable
+    public static String getAgentVersion() {
+        return AGENT_VERSION;
+    }
+
+    @Nullable
+    public static String getVersion(Class<?> clazz, String groupId, String artifactId) {
+        String version = versionsCache.get(clazz);
+        if (version != null) {
+            return version != UNKNOWN_VERSION ? version : null;
+        }
+        version = getVersionFromPomProperties(clazz, groupId, artifactId);
+        if (version == null) {
+            version = getVersionFromPackage(clazz);
+        }
+        versionsCache.put(clazz, version != null ? version : UNKNOWN_VERSION);
+        return version;
+    }
+
+    @Nullable
+    static String getVersionFromPackage(Class<?> clazz) {
+        Package pkg = clazz.getPackage();
+        if (pkg != null) {
+            return pkg.getImplementationVersion();
+        }
+        return null;
+    }
+
+    @Nullable
+    static String getVersionFromPomProperties(Class<?> clazz, String groupId, String artifactId) {
+        final String classpathLocation = "/META-INF/maven/" + groupId + "/" + artifactId + "/pom.properties";
+        final Properties pomProperties = getFromClasspath(classpathLocation, clazz);
         if (pomProperties != null) {
             return pomProperties.getProperty("version");
         }
         return null;
     }
 
-    public static Integer getMajorVersionFromPomProperties(Class clazz, String groupId, String artifactId) {
-        String version = getVersionFromPomProperties(clazz, groupId, artifactId);
-        return getMajorVersion(version);
-    }
-
-    public static Integer getMajorVersion(String version) {
-        if (version != null) {
-            StringTokenizer stringTokenizer = new StringTokenizer(version, ".");
-            try {
-                Integer majorVersion = Integer.valueOf(stringTokenizer.nextToken());
-                logger.debug(String.format("Parsed version: %s, got major version: %d ", version, majorVersion));
-                return majorVersion;
-            } catch (NumberFormatException nfe) {
-                logger.error(nfe.getMessage(), nfe);
-            } catch (NoSuchElementException nsee) {
-                logger.error(nsee.getMessage(), nsee);
+    @Nullable
+    private static Properties getFromClasspath(String classpathLocation, Class<?> clazz) {
+        final Properties props = new Properties();
+        try (InputStream resourceStream = clazz.getResourceAsStream(classpathLocation)) {
+            if (resourceStream != null) {
+                props.load(resourceStream);
+                return props;
             }
+        } catch (IOException ignore) {
         }
         return null;
     }
 
-    public static String getMavenCentralDownloadLink(String groupId, String artifactId, String version) {
-        return String.format("http://central.maven.org/maven2/%s/%s/%s/%s-%s.jar", groupId.replace('.', '/'), artifactId, version, artifactId, version);
+    @Nullable
+    public static String getManifestEntry(@Nullable File jarFile, String manifestAttribute) {
+        if (jarFile == null) {
+            return null;
+        }
+        try (JarInputStream jarInputStream = new JarInputStream(new FileInputStream(jarFile))) {
+            return jarInputStream.getManifest().getMainAttributes().getValue(manifestAttribute);
+        } catch (IOException e) {
+            return null;
+        }
     }
 
 }

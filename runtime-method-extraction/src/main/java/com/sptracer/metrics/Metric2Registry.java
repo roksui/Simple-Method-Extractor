@@ -55,12 +55,6 @@ public class Metric2Registry implements Metric2Set {
             if (existing != null) {
                 throw new IllegalArgumentException("A metric named " + name + " already exists");
             }
-            else {
-                // This is a new metric - we have to register the Metric with
-                // the legacy Dropwizard Metric registry as
-                // well to support existing reports and listeners
-                metricRegistry.register(name.toGraphiteName(), metric);
-            }
         }
         return metric;
     }
@@ -144,23 +138,6 @@ public class Metric2Registry implements Metric2Set {
      */
     public Timer timer(MetricName name) {
         return getOrAdd(name, MetricBuilder.TIMERS);
-    }
-
-    /**
-     * Removes the metric with the given name.
-     *
-     * @param name the name of the metric
-     * @return whether or not the metric was removed
-     */
-    public boolean remove(MetricName name) {
-        final Metric metric = metrics.remove(name);
-        if (metric != null) {
-            // We have to unregister the Metric with the legacy Dropwizard Metric registry as
-            // well to support existing reports and listeners
-            metricRegistry.remove(name.toGraphiteName());
-            return true;
-        }
-        return false;
     }
 
     /**
@@ -298,46 +275,10 @@ public class Metric2Registry implements Metric2Set {
         return Collections.unmodifiableMap(metrics);
     }
 
-    @SuppressWarnings("unchecked")
-    protected <T extends Metric> Map<MetricName, T> getMetrics(Class<T> klass, MetricFilter filter) {
-        final Map<MetricName, T> metrics = new HashMap<MetricName, T>();
-        for (Map.Entry<MetricName, Metric> entry : this.metrics.entrySet()) {
-            if (klass.isInstance(entry.getValue()) && filter.matches(entry.getKey().toGraphiteName(), entry.getValue())) {
-                metrics.put(entry.getKey(), (T) entry.getValue());
-            }
-        }
-        return Collections.unmodifiableMap(metrics);
-    }
 
     @Override
     public Map<MetricName, Metric> getMetrics() {
         return Collections.unmodifiableMap(metrics);
-    }
-
-    /**
-     * Removes all metrics which match the given filter.
-     *
-     * @param filter a filter
-     */
-    public void removeMatching(MetricFilter filter) {
-        for (Map.Entry<MetricName, Metric> entry : metrics.entrySet()) {
-            if (filter.matches(entry.getKey().toGraphiteName(), entry.getValue())) {
-                remove(entry.getKey());
-            }
-        }
-    }
-
-    /**
-     * Removes all metrics which match the given filter.
-     *
-     * @param filter a filter
-     */
-    public void removeMatching(Metric2Filter filter) {
-        for (Map.Entry<MetricName, Metric> entry : metrics.entrySet()) {
-            if (filter.matches(entry.getKey(), entry.getValue())) {
-                remove(entry.getKey());
-            }
-        }
     }
 
     /**

@@ -1,37 +1,27 @@
 package com.sptracer;
 
-import com.codahale.metrics.Clock;
 import com.codahale.metrics.Gauge;
 import com.codahale.metrics.JmxReporter;
 import com.codahale.metrics.MetricRegistry;
-import com.codahale.metrics.graphite.Graphite;
-import com.codahale.metrics.graphite.GraphiteReporter;
 import com.codahale.metrics.health.HealthCheckRegistry;
 import com.sptracer.configuration.ConfigurationOption;
 import com.sptracer.configuration.ConfigurationRegistry;
-import com.sptracer.metrics.Metric2Filter;
-import com.sptracer.metrics.Metric2Registry;
-import com.sptracer.metrics.MetricName;
+import com.sptracer.configuration.converter.SetValueConverter;
+import com.sptracer.metrics.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetAddress;
-import java.net.InetSocketAddress;
 import java.net.URL;
 import java.net.URLEncoder;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
-import java.util.ServiceLoader;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import static com.codahale.metrics.MetricRegistry.name;
 
 
 public class CorePlugin extends SpTracerPlugin {
@@ -43,7 +33,7 @@ public class CorePlugin extends SpTracerPlugin {
 
     private static final Logger logger = LoggerFactory.getLogger(CorePlugin.class);
 
-    private final ConfigurationOption<Boolean> stagemonitorActive = ConfigurationOption.booleanOption()
+    private final ConfigurationOption<Boolean> spTracerActive = ConfigurationOption.booleanOption()
             .key("stagemonitor.active")
             .dynamic(true)
             .label("Activate stagemonitor")
@@ -63,112 +53,6 @@ public class CorePlugin extends SpTracerPlugin {
             .label("Reporting interval console")
             .description("The amount of time between console reports (in seconds). " +
                     "To deactivate console reports, set this to a value below 1.")
-            .configurationCategory(CORE_PLUGIN_NAME)
-            .buildWithDefault(0);
-    private final ConfigurationOption<Boolean> reportingJmx = ConfigurationOption.booleanOption()
-            .key("stagemonitor.reporting.jmx")
-            .dynamic(false)
-            .label("Expose MBeans")
-            .description("Whether or not to expose all metrics as MBeans.")
-            .configurationCategory(CORE_PLUGIN_NAME)
-            .buildWithDefault(false);
-    private final ConfigurationOption<Integer> reportingIntervalGraphite = ConfigurationOption.integerOption()
-            .key("stagemonitor.reporting.interval.graphite")
-            .dynamic(false)
-            .label("Reporting interval graphite")
-            .description("The amount of time between the metrics are reported to graphite (in seconds).\n" +
-                    "To deactivate graphite reporting, set this to a value below 1, or don't provide " +
-                    "stagemonitor.reporting.graphite.hostName.")
-            .tags(METRICS_STORE, "graphite")
-            .configurationCategory(CORE_PLUGIN_NAME)
-            .buildWithDefault(60);
-    private final ConfigurationOption<String> graphiteHostName = ConfigurationOption.stringOption()
-            .key("stagemonitor.reporting.graphite.hostName")
-            .dynamic(false)
-            .label("Graphite host name")
-            .description("The name of the host where graphite is running. This setting is mandatory, if you want " +
-                    "to use the grafana dashboards.")
-            .tags(METRICS_STORE, "graphite")
-            .configurationCategory(CORE_PLUGIN_NAME)
-            .build();
-    private final ConfigurationOption<Integer> graphitePort = ConfigurationOption.integerOption()
-            .key("stagemonitor.reporting.graphite.port")
-            .dynamic(false)
-            .label("Carbon port")
-            .description("The port where carbon is listening.")
-            .tags(METRICS_STORE, "graphite")
-            .configurationCategory(CORE_PLUGIN_NAME)
-            .buildWithDefault(2003);
-    private final ConfigurationOption<URL> influxDbUrl = ConfigurationOption.urlOption()
-            .key("stagemonitor.reporting.influxdb.url")
-            .dynamic(true)
-            .label("InfluxDB URL")
-            .description("The URL of your InfluxDB installation.")
-            .tags(METRICS_STORE, "influx-db")
-            .configurationCategory(CORE_PLUGIN_NAME)
-            .build();
-    private final ConfigurationOption<String> influxDbDb = ConfigurationOption.stringOption()
-            .key("stagemonitor.reporting.influxdb.db")
-            .dynamic(true)
-            .label("InfluxDB database")
-            .description("The target database")
-            .tags(METRICS_STORE, "influx-db")
-            .configurationCategory(CORE_PLUGIN_NAME)
-            .buildWithDefault("stagemonitor");
-    private final ConfigurationOption<Integer> reportingIntervalInfluxDb = ConfigurationOption.integerOption()
-            .key("stagemonitor.reporting.interval.influxdb")
-            .dynamic(false)
-            .label("Reporting interval InfluxDb")
-            .description("The amount of time between the metrics are reported to InfluxDB (in seconds).")
-            .tags(METRICS_STORE, "influx-db")
-            .configurationCategory(CORE_PLUGIN_NAME)
-            .buildWithDefault(60);
-    private final ConfigurationOption<Integer> reportingIntervalElasticsearch = ConfigurationOption.integerOption()
-            .key("stagemonitor.reporting.interval.elasticsearch")
-            .dynamic(false)
-            .label("Reporting interval Elasticsearch")
-            .description("The amount of time between the metrics are reported to Elasticsearch (in seconds).")
-            .tags(METRICS_STORE, ELASTICSEARCH)
-            .configurationCategory(CORE_PLUGIN_NAME)
-            .buildWithDefault(60);
-    private final ConfigurationOption<Boolean> onlyLogElasticsearchMetricReports = ConfigurationOption.booleanOption()
-            .key("stagemonitor.reporting.elasticsearch.onlyLogElasticsearchMetricReports")
-            .dynamic(false)
-            .label("Only log Elasticsearch metric reports")
-            .description(String.format("If set to true, the metrics won't be reported to elasticsearch but instead logged in bulk format. " +
-                    "The name of the logger is %s. That way you can redirect the reporting to a separate log file and use logstash or a " +
-                    "different external process to send the metrics to elasticsearch.", ElasticsearchReporter.ES_METRICS_LOGGER))
-            .tags(METRICS_STORE, ELASTICSEARCH)
-            .configurationCategory(CORE_PLUGIN_NAME)
-            .buildWithDefault(false);
-    private final ConfigurationOption<Integer> deleteElasticsearchMetricsAfterDays = ConfigurationOption.integerOption()
-            .key("stagemonitor.reporting.elasticsearch.deleteMetricsAfterDays")
-            .dynamic(false)
-            .label("Delete ES metrics after (days)")
-            .description("The number of days after the metrics stored in elasticsearch should be deleted. Set below 1 to deactivate.")
-            .tags(METRICS_STORE, ELASTICSEARCH)
-            .configurationCategory(CORE_PLUGIN_NAME)
-            .buildWithDefault(-1);
-    private final ConfigurationOption<Integer> moveToColdNodesAfterDays = ConfigurationOption.integerOption()
-            .key("stagemonitor.reporting.elasticsearch.hotColdArchitecture.moveToColdNodesAfterDays")
-            .aliasKeys("stagemonitor.elasticsearch.hotColdArchitecture.moveToColdNodesAfterDays")
-            .dynamic(false)
-            .label("Activate Hot-Cold Architecture")
-            .description("Setting this to a value > 1 activates the hot-cold architecture described in https://www.elastic.co/blog/hot-warm-architecture " +
-                    "where new data that is more frequently queried and updated is stored on beefy nodes (SSDs, more RAM and CPU). " +
-                    "When the indexes reach a certain age, they are allocated on cold nodes. For this to work, you have to tag your " +
-                    "beefy nodes with node.box_type: hot (either in elasticsearch.yml or start the node using ./bin/elasticsearch --node.box_type hot)" +
-                    "and your historical nodes with node.box_type: cold.")
-            .tags(METRICS_STORE, ELASTICSEARCH)
-            .configurationCategory(CORE_PLUGIN_NAME)
-            .buildWithDefault(-1);
-    private final ConfigurationOption<Integer> numberOfReplicas = ConfigurationOption.integerOption()
-            .key("stagemonitor.reporting.elasticsearch.numberOfReplicas")
-            .aliasKeys("stagemonitor.elasticsearch.numberOfReplicas")
-            .dynamic(false)
-            .label("Number of ES Replicas")
-            .description("Sets the number of replicas of the Elasticsearch index templates.")
-            .tags(METRICS_STORE, ELASTICSEARCH)
             .configurationCategory(CORE_PLUGIN_NAME)
             .buildWithDefault(0);
     private final ConfigurationOption<Integer> numberOfShards = ConfigurationOption.integerOption()
@@ -345,26 +229,6 @@ public class CorePlugin extends SpTracerPlugin {
             .description("A list of the simple class names of StagemonitorByteBuddyTransformers that should not be applied")
             .configurationCategory(CORE_PLUGIN_NAME)
             .buildWithDefault(Collections.<String>emptySet());
-    private final ConfigurationOption<String> grafanaUrl = ConfigurationOption.stringOption()
-            .key("stagemonitor.grafana.url")
-            .dynamic(true)
-            .label("Grafana URL")
-            .description("The URL of your Grafana 2.0 installation")
-            .configurationCategory(CORE_PLUGIN_NAME)
-            .tags("grafana")
-            .build();
-    private final ConfigurationOption<String> grafanaApiKey = ConfigurationOption.stringOption()
-            .key("stagemonitor.grafana.apiKey")
-            .dynamic(true)
-            .label("Grafana API Key")
-            .description("The API Key of your Grafana 2.0 installation. " +
-                    "See http://docs.grafana.org/reference/http_api/#create-api-token how to create a key. " +
-                    "The key has to have the admin role. This is necessary so that stagemonitor can automatically add " +
-                    "datasources and dashboards to Grafana.")
-            .configurationCategory(CORE_PLUGIN_NAME)
-            .tags("grafana")
-            .sensitive()
-            .build();
     private final ConfigurationOption<Integer> threadPoolQueueCapacityLimit = ConfigurationOption.integerOption()
             .key(POOLS_QUEUE_CAPACITY_LIMIT_KEY)
             .dynamic(false)
@@ -417,31 +281,14 @@ public class CorePlugin extends SpTracerPlugin {
                     "wrong configuration.")
             .configurationCategory(CORE_PLUGIN_NAME)
             .buildWithDefault(true);
-    private final ConfigurationOption<Boolean> initializeElasticsearch = ConfigurationOption.booleanOption()
-            .key("stagemonitor.elasticsearch.init")
-            .dynamic(true)
-            .label("Initialize Elasticsearch indices and Kibana dashboards")
-            .description("Set to true if stagemonitor should initialize the required indices and Dashboards. " +
-                    "If you don't want to grant the stagemonitor X-Pack Security user the permission to create " +
-                    "indices and to access the .kibana index, set this to false and use the init tool " +
-                    "https://github.com/stagemonitor/stagemonitor-elasticsearch-init.")
-            .configurationCategory(CORE_PLUGIN_NAME)
-            .buildWithDefault(true);
 
     private List<Closeable> reporters = new CopyOnWriteArrayList<Closeable>();
 
-    private ElasticsearchClient elasticsearchClient;
-    private GrafanaClient grafanaClient;
-    private IndexSelector indexSelector = new IndexSelector(new Clock.UserTimeClock());
     private Metric2Registry metricRegistry;
     private AtomicInteger accessesToElasticsearchUrl = new AtomicInteger();
     private HealthCheckRegistry healthCheckRegistry;
 
     public CorePlugin() {
-    }
-
-    public CorePlugin(ElasticsearchClient elasticsearchClient) {
-        this.elasticsearchClient = elasticsearchClient;
     }
 
     @Override
@@ -459,10 +306,6 @@ public class CorePlugin extends SpTracerPlugin {
                 return 1;
             }
         });
-
-        // it's important to initialize the ElasticsearchClient via getElasticsearchClient()
-        // otherwise the periodic availability check might not get started
-        getElasticsearchClient();
 
         registerReporters(initArguments.getMetricRegistry(), initArguments.getConfiguration(), initArguments.getMeasurementSession());
     }
@@ -482,53 +325,10 @@ public class CorePlugin extends SpTracerPlugin {
         Metric2Filter allFilters = new AndMetric2Filter(regexFilter, new MetricsWithCountFilter());
         MetricRegistry legacyMetricRegistry = metric2Registry.getMetricRegistry();
 
-        reportToGraphite(legacyMetricRegistry, getGraphiteReportingInterval(), measurementSession);
-        reportToInfluxDb(metric2Registry, reportingIntervalInfluxDb.getValue(), measurementSession);
         reportToConsole(metric2Registry, getConsoleReportingInterval(), allFilters);
-
-        if (configuration.getConfig(CorePlugin.class).isReportToJMX()) {
-            // Because JMX reporter is on registration and not periodic only the
-            // regex filter is applicable here (not filtering metrics by count)
-            reportToJMX(legacyMetricRegistry);
-        }
     }
 
 
-    private void reportToGraphite(MetricRegistry metricRegistry, long reportingInterval, MeasurementSession measurementSession) {
-        if (isReportToGraphite()) {
-            final GraphiteReporter graphiteReporter = GraphiteReporter.forRegistry(metricRegistry)
-                    .prefixedWith(getGraphitePrefix(measurementSession))
-                    .convertRatesTo(TimeUnit.SECONDS)
-                    .convertDurationsTo(TimeUnit.MILLISECONDS)
-                    .build(new Graphite(new InetSocketAddress(getGraphiteHostName(), getGraphitePort())));
-
-            graphiteReporter.start(reportingInterval, TimeUnit.SECONDS);
-            reporters.add(graphiteReporter);
-        }
-    }
-
-    private void reportToInfluxDb(Metric2Registry metricRegistry, int reportingInterval,
-                                  MeasurementSession measurementSession) {
-
-        if (getInfluxDbUrl() != null && reportingInterval > 0) {
-            logger.info("Sending metrics to InfluxDB ({}) every {}s", getInfluxDbUrl(), reportingInterval);
-            final InfluxDbReporter reporter = InfluxDbReporter.forRegistry(metricRegistry, this)
-                    .globalTags(measurementSession.asMap())
-                    .build();
-
-            reporter.start(reportingInterval, TimeUnit.SECONDS);
-            reporters.add(reporter);
-        } else {
-            logger.info("Not sending metrics to InfluxDB (url={}, interval={}s)", getInfluxDbUrl(), reportingInterval);
-        }
-    }
-
-    private String getGraphitePrefix(MeasurementSession measurementSession) {
-        return name("stagemonitor",
-                sanitizeGraphiteMetricSegment(measurementSession.getApplicationName()),
-                sanitizeGraphiteMetricSegment(measurementSession.getInstanceName()),
-                sanitizeGraphiteMetricSegment(measurementSession.getHostName()));
-    }
 
     private void reportToConsole(Metric2Registry metric2Registry, long reportingInterval, Metric2Filter filter) {
         final SortedTableLogReporter reporter = SortedTableLogReporter.forRegistry(metric2Registry)
@@ -558,57 +358,14 @@ public class CorePlugin extends SpTracerPlugin {
             }
         }
 
-        if (elasticsearchClient != null) {
-            elasticsearchClient.close();
-        }
-        if (grafanaClient != null) {
-            grafanaClient.close();
-        }
     }
 
     public MeasurementSession getMeasurementSession() {
-        return Stagemonitor.getMeasurementSession();
+        return SpTracer.getMeasurementSession();
     }
 
     public Metric2Registry getMetricRegistry() {
         return metricRegistry;
-    }
-
-    public ElasticsearchClient getElasticsearchClient() {
-        if (elasticsearchClient == null) {
-            elasticsearchClient = new ElasticsearchClient(this, new HttpClient(), elasticsearchAvailabilityCheckPeriodSec.getValue(), initElasticsearchAvailabilityObservers(Stagemonitor.getConfiguration()));
-        }
-        return elasticsearchClient;
-    }
-
-
-    private static List<ElasticsearchAvailabilityObserver> initElasticsearchAvailabilityObservers(ConfigurationRegistry configurationRegistry) {
-        final List<ElasticsearchAvailabilityObserver> elasticsearchAvailabilityObservers = new ArrayList<ElasticsearchAvailabilityObserver>();
-        ServiceLoader<ElasticsearchAvailabilityObserver> observers = ServiceLoader
-                .load(ElasticsearchAvailabilityObserver.class, CorePlugin.class.getClassLoader());
-        for (ElasticsearchAvailabilityObserver elasticsearchAvailabilityObserver : observers) {
-            elasticsearchAvailabilityObservers.add(elasticsearchAvailabilityObserver);
-            elasticsearchAvailabilityObserver.init(configurationRegistry);
-        }
-
-        Collections.sort(elasticsearchAvailabilityObservers, Collections.reverseOrder(new Comparator<ElasticsearchAvailabilityObserver>() {
-            @Override
-            public int compare(ElasticsearchAvailabilityObserver o1, ElasticsearchAvailabilityObserver o2) {
-                return (o1.getPriority() < o2.getPriority()) ? -1 : ((o1.getPriority() == o2.getPriority()) ? 0 : 1);
-            }
-        }));
-        return elasticsearchAvailabilityObservers;
-    }
-
-    public GrafanaClient getGrafanaClient() {
-        if (grafanaClient == null) {
-            grafanaClient = new GrafanaClient(this, new HttpClient());
-        }
-        return grafanaClient;
-    }
-
-    public void setElasticsearchClient(ElasticsearchClient elasticsearchClient) {
-        this.elasticsearchClient = elasticsearchClient;
     }
 
     public static String getNameOfLocalHost() {
@@ -631,8 +388,8 @@ public class CorePlugin extends SpTracerPlugin {
         return host;
     }
 
-    public boolean isStagemonitorActive() {
-        return Stagemonitor.isDisabled() ? false : stagemonitorActive.getValue();
+    public boolean getSpTracerActive() {
+        return SpTracer.isDisabled() ? false : spTracerActive.getValue();
     }
 
     public boolean isInternalMonitoringActive() {
@@ -641,22 +398,6 @@ public class CorePlugin extends SpTracerPlugin {
 
     public long getConsoleReportingInterval() {
         return reportingIntervalConsole.getValue();
-    }
-
-    public boolean isReportToJMX() {
-        return reportingJmx.getValue();
-    }
-
-    public int getGraphiteReportingInterval() {
-        return reportingIntervalGraphite.getValue();
-    }
-
-    public String getGraphiteHostName() {
-        return graphiteHostName.getValue();
-    }
-
-    public int getGraphitePort() {
-        return graphitePort.getValue();
     }
 
     public String getApplicationName() {
@@ -763,48 +504,8 @@ public class CorePlugin extends SpTracerPlugin {
         return excludedInstrumenters.getValue();
     }
 
-    public URL getInfluxDbUrl() {
-        return influxDbUrl.getValue();
-    }
-
-    public String getInfluxDbDb() {
-        return influxDbDb.getValue();
-    }
-
-    public boolean isReportToElasticsearch() {
-        return !getElasticsearchUrls().isEmpty() && reportingIntervalElasticsearch.getValue() > 0;
-    }
-
-    public boolean isReportToGraphite() {
-        return StringUtils.isNotEmpty(getGraphiteHostName());
-    }
-
-    public String getGrafanaUrl() {
-        return StringUtils.removeTrailingSlash(grafanaUrl.getValue());
-    }
-
-    public String getGrafanaApiKey() {
-        return grafanaApiKey.getValue();
-    }
-
     public int getThreadPoolQueueCapacityLimit() {
         return threadPoolQueueCapacityLimit.getValue();
-    }
-
-    public IndexSelector getIndexSelector() {
-        return indexSelector;
-    }
-
-    public int getElasticsearchReportingInterval() {
-        return reportingIntervalElasticsearch.getValue();
-    }
-
-    public Integer getMoveToColdNodesAfterDays() {
-        return moveToColdNodesAfterDays.getValue();
-    }
-
-    public boolean isOnlyLogElasticsearchMetricReports() {
-        return onlyLogElasticsearchMetricReports.getValue();
     }
 
     public boolean isDebugInstrumentation() {
@@ -813,10 +514,6 @@ public class CorePlugin extends SpTracerPlugin {
 
     public Collection<String> getExportClassesWithName() {
         return exportClassesWithName.getValue();
-    }
-
-    public Integer getNumberOfReplicas() {
-        return numberOfReplicas.getValue();
     }
 
     public Integer getNumberOfShards() {
@@ -839,20 +536,12 @@ public class CorePlugin extends SpTracerPlugin {
         return deactivateStagemonitorIfRemotePropertyServerIsDown.getValue();
     }
 
-    public int getDeleteElasticsearchMetricsAfterDays() {
-        return deleteElasticsearchMetricsAfterDays.get();
-    }
-
     public String getMetricsIndexTemplate() {
         return metricsIndexTemplate.get();
     }
 
     public boolean isMetricsIndexTemplateDefaultValue() {
         return metricsIndexTemplate.isDefault();
-    }
-
-    public boolean isInitializeElasticsearch() {
-        return initializeElasticsearch.get();
     }
 
     public HealthCheckRegistry getHealthCheckRegistry() {

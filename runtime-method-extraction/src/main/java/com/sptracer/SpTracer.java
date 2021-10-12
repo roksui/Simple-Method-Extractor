@@ -58,7 +58,7 @@ public final class SpTracer {
     }
 
     private static void startMonitoring(MeasurementSession measurementSession) {
-        if (!getPlugin(CorePlugin.class).isStagemonitorActive()) {
+        if (!getPlugin(CorePlugin.class).getSpTracerActive()) {
             logger.info("stagemonitor is deactivated");
             disabled = true;
         }

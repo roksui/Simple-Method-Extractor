@@ -1,105 +1,182 @@
 package com.sptracer.util;
 
-import com.sptracer.configuration.source.PropertyFileConfigurationSource;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.URISyntaxException;
-import java.net.URL;
+import java.math.BigInteger;
+import java.nio.Buffer;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.nio.charset.CharsetDecoder;
+import java.nio.charset.CoderResult;
+import java.nio.charset.StandardCharsets;
+import java.security.DigestInputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 
 public class IOUtils {
-
-    private static final int EOF = -1;
-    private static final int BUFFER_SIZE = 4096;
-    private static final Logger logger = LoggerFactory.getLogger(IOUtils.class);
-
-    private IOUtils() {
-    }
-
-    public static void copy(InputStream input, OutputStream output) throws IOException {
-        int n;
-        final byte[] buffer = new byte[BUFFER_SIZE];
-        while (EOF != (n = input.read(buffer))) {
-            output.write(buffer, 0, n);
+    protected static final int BYTE_BUFFER_CAPACITY = 2048;
+    protected static final ThreadLocal<ByteBuffer> threadLocalByteBuffer = new ThreadLocal<ByteBuffer>() {
+        @Override
+        protected ByteBuffer initialValue() {
+            return ByteBuffer.allocate(BYTE_BUFFER_CAPACITY);
         }
-    }
-
-    public static void write(String str, OutputStream out) throws IOException {
-        out.write(str.getBytes());
-    }
-
-    public static String toString(InputStream input) throws IOException {
-        if (input == null) {
-            return null;
+    };
+    protected static final ThreadLocal<CharsetDecoder> threadLocalCharsetDecoder = new ThreadLocal<CharsetDecoder>() {
+        @Override
+        protected CharsetDecoder initialValue() {
+            return StandardCharsets.UTF_8.newDecoder();
         }
-        final InputStreamReader inputStreamReader = new InputStreamReader(input);
-        final StringBuilder stringBuilder = new StringBuilder();
-        final char[] buffer = new char[BUFFER_SIZE];
-        int n = 0;
-        while (EOF != (n = inputStreamReader.read(buffer))) {
-            stringBuilder.append(buffer, 0, n);
-        }
-        return stringBuilder.toString();
-    }
+    };
 
-    public static void closeQuietly(InputStream is) {
-        if (is != null) {
-            try {
-                is.close();
-            } catch (IOException e) {
-                // ignore
+    /**
+     * Reads the provided {@link InputStream} into the {@link CharBuffer} without causing allocations.
+     * <p>
+     * The {@link InputStream} is assumed to yield an UTF-8 encoded string.
+     * </p>
+     * <p>
+     * If the {@link InputStream} yields more chars than the {@link CharBuffer#limit()} of the provided {@link CharBuffer},
+     * the rest of the input is silently ignored.
+     * </p>
+     *
+     * @param is         the source {@link InputStream}, which should be encoded with UTF-8.
+     * @param charBuffer the {@link CharBuffer} the {@link InputStream} should be written into
+     * @return {@code true}, if the input stream could be decoded with the UTF-8 charset, {@code false} otherwise.
+     * @throws IOException in case of errors reading from the provided {@link InputStream}
+     */
+    public static boolean readUtf8Stream(final InputStream is, final CharBuffer charBuffer) throws IOException {
+        // to be compatible with Java 8, we have to cast to buffer because of different return types
+        final ByteBuffer buffer = threadLocalByteBuffer.get();
+        final CharsetDecoder charsetDecoder = threadLocalCharsetDecoder.get();
+        try {
+            final byte[] bufferArray = buffer.array();
+            for (int read = is.read(bufferArray); read != -1; read = is.read(bufferArray)) {
+                ((Buffer) buffer).limit(read);
+                final CoderResult coderResult = charsetDecoder.decode(buffer, charBuffer, true);
+                ((Buffer) buffer).clear();
+                if (coderResult.isError()) {
+                    // this is not UTF-8
+                    ((Buffer) charBuffer).clear();
+                    return false;
+                } else if (coderResult.isOverflow()) {
+                    // stream yields more chars than the charBuffer can hold
+                    break;
+                }
             }
-        }
-    }
-
-    public static void consumeAndClose(InputStream is) {
-        if (is == null) {
-            return;
-        }
-        try {
-            while (is.read() != EOF) {}
-        } catch (IOException e) {
-            logger.warn(e.getMessage(), e);
+            charsetDecoder.flush(charBuffer);
+            return true;
         } finally {
-            closeQuietly(is);
+            ((Buffer) charBuffer).flip();
+            ((Buffer) buffer).clear();
+            charsetDecoder.reset();
+            is.close();
         }
     }
 
-    public static InputStream getResourceAsStream(String name) {
-        return IOUtils.class.getClassLoader().getResourceAsStream(name);
+    /**
+     * Decodes a UTF-8 encoded byte array into a char buffer, without allocating memory.
+     * <p>
+     * The {@code byte[]} is assumed to yield an UTF-8 encoded string.
+     * If this is not true, the returned {@link CoderResult} will have the {@link CoderResult#isError()} flag set to true.
+     * </p>
+     * <p>
+     * If the {@code byte[]} yields more chars than the {@link CharBuffer#limit()} of the provided {@link CharBuffer},
+     * the returned {@link CoderResult} will have the {@link CoderResult#isOverflow()} flag set to true.
+     * </p>
+     * <p>
+     * NOTE: This method does not {@link CharBuffer#flip()} the provided {@link CharBuffer} so that this method can be called multiple times
+     * with the same {@link CharBuffer}.
+     * If you are done with appending to the {@link CharBuffer}, you have to call {@link CharBuffer#flip()} manually.
+     * </p>
+     *
+     * @param bytes      the source byte[], which should be encoded with UTF-8.
+     * @param charBuffer the {@link CharBuffer} the {@link InputStream} should be written into
+     * @return a {@link CoderResult}, indicating the success or failure of the decoding
+     */
+    public static CoderResult decodeUtf8Bytes(final byte[] bytes, final CharBuffer charBuffer) {
+        return decodeUtf8Bytes(bytes, 0, bytes.length, charBuffer);
     }
 
-    public static String getResourceAsString(String name) {
+    /**
+     * Decodes a UTF-8 encoded byte array into a char buffer, without allocating memory.
+     * <p>
+     * The {@code byte[]} is assumed to yield an UTF-8 encoded string.
+     * If this is not true, the returned {@link CoderResult} will have the {@link CoderResult#isError()} flag set to true.
+     * </p>
+     * <p>
+     * If the {@code byte[]} yields more chars than the {@link CharBuffer#limit()} of the provided {@link CharBuffer},
+     * the returned {@link CoderResult} will have the {@link CoderResult#isOverflow()} flag set to true.
+     * </p>
+     * <p>
+     * NOTE: This method does not {@link CharBuffer#flip()} the provided {@link CharBuffer} so that this method can be called multiple times
+     * with the same {@link CharBuffer}.
+     * If you are done with appending to the {@link CharBuffer}, you have to call {@link CharBuffer#flip()} manually.
+     * </p>
+     *
+     * @param bytes      the source byte[], which should be encoded with UTF-8
+     * @param charBuffer the {@link CharBuffer} the {@link InputStream} should be written into
+     * @param offset     the start offset in array <code>bytes</code> at which the data is read
+     * @param length     the maximum number of bytes to read
+     * @return a {@link CoderResult}, indicating the success or failure of the decoding
+     */
+    public static CoderResult decodeUtf8Bytes(final byte[] bytes, final int offset, final int length, final CharBuffer charBuffer) {
+        // to be compatible with Java 8, we have to cast to buffer because of different return types
+        final ByteBuffer buffer;
+        if (BYTE_BUFFER_CAPACITY < length) {
+            // allocates a ByteBuffer wrapper object, the underlying byte[] is not copied
+            buffer = ByteBuffer.wrap(bytes, offset, length);
+        } else {
+            buffer = threadLocalByteBuffer.get();
+            buffer.put(bytes, offset, length);
+            ((Buffer) buffer).position(0);
+            ((Buffer) buffer).limit(length);
+        }
+        return decode(charBuffer, buffer);
+    }
+
+    /**
+     * Decodes a single UTF-8 encoded byte into a char buffer, without allocating memory.
+     * <p>
+     * The {@code byte} is assumed to yield an UTF-8 encoded string.
+     * If this is not true, the returned {@link CoderResult} will have the {@link CoderResult#isError()} flag set to true.
+     * </p>
+     * <p>
+     * If the provided {@link CharBuffer} has already reached its {@link CharBuffer#limit()},
+     * the returned {@link CoderResult} will have the {@link CoderResult#isOverflow()} flag set to true.
+     * </p>
+     * <p>
+     * NOTE: This method does not {@link CharBuffer#flip()} the provided {@link CharBuffer} so that this method can be called multiple times
+     * with the same {@link CharBuffer}.
+     * If you are done with appending to the {@link CharBuffer}, you have to call {@link CharBuffer#flip()} manually.
+     * </p>
+     *
+     * @param b          the source byte[], which should be encoded with UTF-8
+     * @param charBuffer the {@link CharBuffer} the {@link InputStream} should be written into
+     * @return a {@link CoderResult}, indicating the success or failure of the decoding
+     */
+    public static CoderResult decodeUtf8Byte(final byte b, final CharBuffer charBuffer) {
+        // to be compatible with Java 8, we have to cast to buffer because of different return types
+        final ByteBuffer buffer = threadLocalByteBuffer.get();
+        buffer.put(b);
+        ((Buffer) buffer).position(0);
+        ((Buffer) buffer).limit(1);
+        return decode(charBuffer, buffer);
+    }
+
+    protected static CoderResult decode(CharBuffer charBuffer, ByteBuffer buffer) {
+        final CharsetDecoder charsetDecoder = threadLocalCharsetDecoder.get();
         try {
-            return toString(getResourceAsStream(name));
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+            final CoderResult coderResult = charsetDecoder.decode(buffer, charBuffer, true);
+            charsetDecoder.flush(charBuffer);
+            return coderResult;
+        } finally {
+            ((Buffer) buffer).clear();
+            charsetDecoder.reset();
         }
     }
 
-    public static byte[] readToBytes(InputStream inputStream) throws IOException {
-        if (inputStream == null) {
-            return new byte[0];
-        }
-        final ByteArrayOutputStream output = new ByteArrayOutputStream();
-        copy(inputStream, output);
-        return output.toByteArray();
-    }
-
-    public static File getFile(String classPathLocation) throws IOException, URISyntaxException {
-        URL resource = PropertyFileConfigurationSource.class.getClassLoader().getResource(classPathLocation);
-        if (resource == null) {
-            resource = new URL("file://" + classPathLocation);
-        }
-        if (!"file".equals(resource.getProtocol())) {
-            throw new IOException("Saving to property files inside a war, ear or jar is not possible.");
-        }
-        return new File(resource.toURI());
-    }
 }

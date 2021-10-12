@@ -19,7 +19,7 @@
               <transformers>
                 <transformer>
                   <manifestEntries>
-                    <Premain-Class>com.sptracer.Agent</Premain-Class>
+                    <Premain-Class>net.bytebuddy.agent.Installer</Premain-Class>
                   </manifestEntries>
                 </transformer>
               </transformers>

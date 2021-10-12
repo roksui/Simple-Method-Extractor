@@ -12,7 +12,6 @@ import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.dynamic.scaffold.MethodGraph;
 import net.bytebuddy.dynamic.scaffold.TypeValidation;
 import net.bytebuddy.matcher.ElementMatcher;
-import net.bytebuddy.matcher.ElementMatchers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -58,7 +57,7 @@ public class AgentAttacher {
      * @return A runnable that should be called on shutdown to unregister this class file transformer
      */
     public static synchronized Runnable performRuntimeAttachment() {
-        if (runtimeAttached || !corePlugin.isStagemonitorActive() || !corePlugin.isAttachAgentAtRuntime()) {
+        if (runtimeAttached || !corePlugin.getSpTracerActive() || !corePlugin.isAttachAgentAtRuntime()) {
             return NOOP_ON_SHUTDOWN_ACTION;
         }
         runtimeAttached = true;

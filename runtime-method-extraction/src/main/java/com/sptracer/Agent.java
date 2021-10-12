@@ -7,9 +7,9 @@ import net.bytebuddy.matcher.ElementMatchers;
 
 import java.lang.instrument.Instrumentation;
 
-/**
+/*
+*
  * 실행 중인 프로그램의 모든 메소드를 가로채는 Agent 클래스
- */
 public class Agent {
 
     public static void premain(String arg, Instrumentation instrumentation) {
@@ -26,4 +26,4 @@ public class Agent {
                         .intercept(MethodDelegation.to(MethodInterceptor.class)))
                 .installOn(instrumentation);
     }
-}
+}*/
