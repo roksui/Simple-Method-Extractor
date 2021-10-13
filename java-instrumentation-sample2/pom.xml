@@ -4,8 +4,8 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>groupId</groupId>
-    <artifactId>java-instrumentation-sample</artifactId>
+    <groupId>org.example</groupId>
+    <artifactId>java-instrumentation-sample2</artifactId>
     <version>1.0-SNAPSHOT</version>
 
     <properties>
@@ -13,13 +13,4 @@
         <maven.compiler.target>11</maven.compiler.target>
     </properties>
 
-    <dependencies>
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter-api</artifactId>
-            <version>5.7.1</version>
-            <scope>test</scope>
-        </dependency>
-    </dependencies>
-    
 </project>
